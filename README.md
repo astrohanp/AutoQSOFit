@@ -22,9 +22,10 @@ To begin working with AutoQSOFit, you must install it.To do so you can use pip. 
 ## 2. Run `Pre-Notebook.ipynb` *(title in progress)*
 As mentioned in the overview, this notebook is designed to take an input catalog and output a catalog that is formatted to be compatible with the fitting program `autoqsofit.py`
 
-This notebook is divided into 3 sections:
-### Catalog Formatting
-This section is the only required section of the notebook, it requires the user to read in their catalog and will output a catalog that is formatted to work with the fitting code. 
+<b>This notebook is divided into 3 sections:</b>
+
+### Catalog Formatting (Required)
+This section is the only <b>required section</b> of the notebook, it requires the user to read in their catalog and will output a catalog that is formatted to work with the fitting code. 
 
 An example is done for the user using a subsection of the DEIMOS Catalog which was obtained by the [Cosmos Team](https://cosmos.astro.caltech.edu/news/65).
 
