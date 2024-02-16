@@ -12,7 +12,9 @@ We will also be providing a notebook `post_notebook.ipynb` *(title in progress)*
 To begin working with AutoQSOFit, you must install it.To do so you can use pip. You can perform the following lines in the terminal:
 
 `$ git clone https://github.com/astrohanp/AutoQSOFit.git`
+
 `$ cd AutoQSOFit`
+
 `$ python -m pip install .`
 
 *It may be most useful to create an enviornment designed to work with this program.* 
