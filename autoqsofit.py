@@ -25,21 +25,19 @@ from multiprocessing import Pool,cpu_count
 import warnings
 warnings.filterwarnings("ignore")
 
-# the link to 1d fits in DEIMOS Catalog
-fits_link = 'https://irsa.ipac.caltech.edu/data/COSMOS/spectra/deimos/spec1d_fits/'
-
 def cont_sub_alt(df_data):
     '''
-    Subtracts the continuum of a spectrum, Attempts to detect emission lines
-    of the resulting spectra and returns the best fit model.
+    Subtracts the stellar absorption continuum of a spectrum using bc03 models present
+    in pyqsofit/bc03 directory, and returns the resulting continuum subtracted spectrum
+    along with the best fit model.
     ----
     Input:
     
     df_data: (DataFrame)
-        Must have the columns: ['wavelength'] ['flux'] ['err']
+        Must have the columns: ['wavelength'] ['flux'] ['error']
         'wavelength' - units of Angstrom
         'flux' - units of of 10^{-17} erg/s/cm^2/Angstrom
-        'err' - same units of flux
+        'error' - same units of flux
     ----
     Output:
     
@@ -52,13 +50,13 @@ def cont_sub_alt(df_data):
         Best Fit model of the resulting spectrum
         
     lines_cent: (dict)
-        Emission lines that are trying to be detected, has units of Angstrom
+        Wavelengths of emission lines that need to be masked, has units of Angstrom
         
     width: (float)
-        The range in wavelength in which we are trying to detect emission lines from 'lines_cent'
+        The range in wavelength in which we are trying to mask emission lines from 'lines_cent'
         
     lines_c_latex: (dict)
-        LaTex notation of the 'lines_cent' dictionary
+        LaTex notation of the 'lines_cent' dictionary for plotting purposes
     '''
     
     min_wav = df_data['wavelength'].min()
@@ -66,7 +64,7 @@ def cont_sub_alt(df_data):
 
     # Pulls models from the PyQSOFit folder, must be adjascent to this file in directory
     models = []
-    for i in glob.glob('../pyqsofit/bc03/*.gz'):
+    for i in glob.glob('pyqsofit/bc03/*.gz'):
         gal_temp = np.genfromtxt(i)
         w = gal_temp[:, 0]
         fl = gal_temp[:, 1]
@@ -75,6 +73,7 @@ def cont_sub_alt(df_data):
         models.append(df)
 
     # Convolve models to velocity dispersion of data and interpolate to match data
+    # !!!!!!!!!!!!!!!!!! This will probably need to be changed based on the data !!!!!!!!!!!!!!!!!!
     models_conv = []
     bc03_pix = 70.0       # Size of 1 model pixel in km/s
     bc03_vdisp = 75.0     # Approximate velocity of BC03 models
@@ -155,7 +154,7 @@ def cont_sub_alt(df_data):
     df_final['wavelength'] = df_data['wavelength']
     df_final['flux'] = flux_sub_cont
 
-    return(df_final, best_fit, lines_cent, width, lines_c_latex)
+    return df_final, best_fit, lines_cent, width, lines_c_latex
 
 def qfit(row):
     '''
@@ -166,20 +165,20 @@ def qfit(row):
     row (DataFrame)
         A catalog of the galaxys you want to fit. row must include these
         columns IN THE FOLLOWING ORDER:
-        'Unnamed: 0': (int)
-            The index column of the catalog
         'ID': (string)
-            The galaxy's ID, must match DEIMOS ID's
+            The galaxy's ID
         'ra': (float)
             The galaxy's RA
         'dec': (float)
             The galaxy's Dec
-        'zspec': (float)
+        'z': (float)
             The galaxy's redshift
-        'Qf': (int)
-            The quality factor of the galaxy's spectra, this is determined through DEIMOS's catalog
-        'fits1d': (string)
-            The filename of the 1d spectral fit, must match DEIMOS filename
+        'wavelength': (array)
+            Wavelength values in Angstrom
+        'flux': (array)
+            Flux values in 10^{-17} erg/s/cm^2/Angstrom
+        'error': (array)
+            Error values in 10^{-17} erg/s/cm^2/Angstrom
     ----
     Output:
     Saved results of the model, spectrum, errors, and figure in galaxy folder
@@ -189,28 +188,40 @@ def qfit(row):
         # Actual function begins here
         
         ########## Identifying the galaxy in the catalog that was read in ##########
-        FARMER_ID = str(row[0])
-        DEIMOS_ID = str(row[1])
-        ra = row[2]
-        dec = row[3]
-        z = row[4]
-        qf = str(row[5])
-        filename = row[6]
+        # FARMER_ID = str(row[0])
+        # DEIMOS_ID = str(row[1])
+        # ra = row[2]
+        # dec = row[3]
+        # z = row[4]
+        # qf = str(row[5])
+        # filename = row[6]
         
         
         
-        ########## reading in the fits file ##########
-        f = fits.open(fits_link+filename) # Close this
+        # ########## reading in the fits file ##########
+        # f = fits.open(fits_link+filename) # Close this
 
         # Loading in the galaxies data
-        wl = f[1].data['LAMBDA'][0]
-        flux = f[1].data['FLUX'][0]#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
-        err = f[1].data['IVAR'][0]#/1e-17
-        df_data = pd.DataFrame(data=list(zip(wl,flux,err)),columns=['wavelength','flux','err'])
+        wl = row['wavelength']
+        flux = row['flux']#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
+        error = row['error']#/1e-17
+        ID = row['ID']
+        z = row['z']
+
+        # Check if ra and dec are provided, if not set them to 0
+        if 'ra' in row and 'dec' in row:
+            ra = row['ra']
+            dec = row['dec']
+        else:
+            ra = 0
+            dec = 0
+
+        # Convert wavelength to rest frame
+        df_data = pd.DataFrame(data=list(zip(wl,flux,error)),columns=['wavelength','flux','error'])
         df_data['wavelength'] = df_data['wavelength']/(1+z)
         
-        # closing the fits file
-        f.close()
+        # # closing the fits file
+        # f.close()
         
         
         
@@ -221,7 +232,7 @@ def qfit(row):
         
         ########## Setting up pathways ##########
         path_ex = '.'
-        path_out = 'data/results/'
+        path_out = 'results/'
         
         # Creates a results folder to save output
         results_folder = 'results'
@@ -231,7 +242,7 @@ def qfit(row):
             os.mkdir(results_folder)
             
         # Creates a galaxy ID folder in your results folder to save output
-        fname = FARMER_ID+'_'+DEIMOS_ID+'_'+qf
+        fname = str(row.index)+'_'+str(ID)+'_'+str(z)
         folder = results_folder+'/'+fname+'/'
         if os.path.exists(folder):
             pass
@@ -244,76 +255,12 @@ def qfit(row):
         wavelength = df_final.wavelength.to_numpy()*(1+z)
         flux = df_final.flux.to_numpy()
 
-        q = QSOFit(wavelength, flux, err, z, ra = ra, dec = dec, path = path_ex)
+        q = QSOFit(wavelength, flux, error, z, ra = ra, dec = dec, path = path_ex)
         
         ########## Do the fitting ##########
         start = timeit.default_timer()
         
-#        q.Fit(name=None,  # customize the name of given targets. Default: plate-mjd-fiber
-#          # prepocessing parameters
-#          nsmooth=1,  # do n-pixel smoothing to the raw input flux and err spectra
-#          and_mask=False,  # delete the and masked pixels
-#          or_mask=False,  # delete the or masked pixels
-#          reject_badpix=False,  # reject 10 most possible outliers by the test of pointDistGESD
-#          deredden=True,  # correct the Galactic extinction
-#          wave_range=None,  # trim input wavelength
-#          wave_mask=None,  # 2-D array, mask the given range(s)
-#
-#          # host decomposition parameters
-#          decompose_host=False,  # If True, the host galaxy-QSO decomposition will be applied
-#          host_line_mask=True,
-#          # If True, the line region of galaxy will be masked when subtracted from original spectra
-#          #BC03=False,  # If True, Bruzual1 & Charlot 2003 host model will be used
-#          #Mi=None,  # i-band absolute magnitude, for further decide PCA model, not necessary
-#          npca_gal=5,  # The number of galaxy PCA components / galaxy models applied
-#          npca_qso=20,  # The number of QSO PCA components applied
-#
-#          # continuum model fit parameters
-#          Fe_uv_op=True,  # If True, fit continuum with UV and optical FeII template
-#          poly=False,  # If True, fit continuum with the polynomial component to account for the dust reddening
-#          BC=False,  # If True, fit continuum with Balmer continua from 1000 to 3646A
-#          initial_guess=None,  # Initial parameters for continuum model, read the annotation of this function for detail
-#          rej_abs_conti=False,  # If True, it will iterately reject 3 sigma outlier absorption pixels in the continuum
-#          n_pix_min_conti=100,  # Minimum number of negative pixels for host continuuum fit to be rejected.
-#
-#          # emission line fit parameters
-#          linefit=True,  # If True, the emission line will be fitted
-#          rej_abs_line=False,
-#          # If True, it will iterately reject 3 sigma outlier absorption pixels in the emission lines
-#
-#          # fitting method selection
-#          MC=True,
-#          # If True, do Monte Carlo resampling of the spectrum based on the input error array to produce the MC error array
-#          MCMC=False,
-#          # If True, do Markov Chain Monte Carlo sampling of the posterior probability densities to produce the error array
-#          nsamp=200,
-#          # The number of trials of the MC process (if MC=True) or number samples to run MCMC chain (if MCMC=True)
-#
-#          # advanced fitting parameters
-#          param_file_name='qsopar.fits',  # Name of the qso fitting parameter FITS file.
-#          nburn=20,  # The number of burn-in samples to run MCMC chain
-#          nthin=10,  # To set the MCMC chain returns every n samples
-#          epsilon_jitter=1e-5,
-#          # Initial jitter for every initial guass to avoid local minimum. (Under test, not recommanded to change)
-#
-#          # customize the results
-#          save_result=False,  # If True, all the fitting results will be saved to a fits file
-#          save_fits_name=None,  # The output name of the result fits
-#          save_fits_path=path_out,  # The output path of the result fits
-#          plot_fig=True,  # If True, the fitting results will be plotted
-#          save_fig=False,  # If True, the figure will be saved
-#          plot_corner=False,  # Whether or not to plot the corner plot results if MCMC=True
-#
-#          # debugging mode
-#          verbose=False,  # turn on (True) or off (False) debugging output
-#
-#          # sublevel parameters for figure plot and emcee
-#          kwargs_plot={
-#              'save_fig_path': path_out,  # The output path of the figure
-#              'broad_fwhm'   : 1200  # km/s, lower limit that code decide if a line component belongs to broad component
-#          },
-#          kwargs_conti_emcee={},
-#          kwargs_line_emcee={})
+
 
 ########## Test code that has PyQSOFit Defaults ##########
 
@@ -522,88 +469,114 @@ def qfit(row):
         
         # ending the timer
         end = timeit.default_timer()
-        print(f'Fitting completed for Galaxy',DEIMOS_ID,'saved the results in',folder,f'it took {np.round(end - start, 1)}s')
+        print(f'Fitting completed for Galaxy',ID,'saved the results in',folder,f'it took {np.round(end - start, 1)}s')
         
-        
-        ########## Creating a Catalogue ##########
-        # this should overwrite any successive entry for the same source ID.
-        output_cat = 'results_cat.pkl'
-        
-        try:
-            resfile = pd.read_pickle(output_cat)
-        except FileNotFoundError:
-            resfile = pd.DataFrame([], columns=['ind', 'id', 'Qf', 'ra', 'dec', 'z','wavelength', 'flux', 'flux_err',
-                                                'model_flux', 'line_obs', 'line_gauss', 'line_type', 'line_compcenter',
-                                                'line_scale_centerwave_sigma', 'line_all_scale_centerwave_sigma',
-                                                'line_FWHM', 'line_FWHM_err', 'line_Sigma', 'line_Sigma_err',
-                                                'line_EW', 'line_EW_err', 'line_Peak', 'line_Peak_err',
-                                                'line_flux', 'line_flux_err', 'line_snr', 'line_all_FWHM',
-                                                'line_all_Sigma', 'line_all_EW', 'line_all_Peak', 'line_all_flux'])
-
-        if DEIMOS_ID in resfile.id.values:
-            resfile = resfile.loc[~resfile.ind == int(FARMER_ID)]
-        resfile.loc[len(resfile.index)] = [int(FARMER_ID), DEIMOS_ID, qf, ra, dec, z, q.wave, q.flux, q.err,
-                                          q.f_conti_model,
-                                          final_lines.Linename.to_numpy(),
-                                          final_lines.ngauss.to_numpy(),
-                                          final_lines.type.to_numpy(),
-                                          final_lines.compcenter.to_numpy(),
-                                          final_lines.scale_centerwave_sigma.to_numpy(),
-                                          final_lines.all_scale_centerwave_sigma.to_numpy(),
-                                          final_lines.FWHM.to_numpy(),
-                                          final_lines.FWHM_err.to_numpy(),
-                                          final_lines.Sigma.to_numpy(),
-                                          final_lines.Sigma_err.to_numpy(),
-                                          final_lines.EW.to_numpy(),
-                                          final_lines.EW_err.to_numpy(),
-                                          final_lines.Peak,
-                                          final_lines.Peak_err.to_numpy(),
-                                          final_lines.flux.to_numpy(),
-                                          final_lines.flux_err.to_numpy(),
-                                          final_lines.snr.to_numpy(),
-                                          final_lines.all_FWHM.to_numpy(),
-                                          final_lines.all_Sigma.to_numpy(),
-                                          final_lines.all_EW.to_numpy(),
-                                          final_lines.all_Peak.to_numpy(),
-                                          final_lines.all_flux.to_numpy()]
-
-        resfile.to_pickle(output_cat)
-
-        print('Compiled',DEIMOS_ID,'into',output_cat,'catalogue')
 
     except Exception as e:
         ########## Printing out the error ##########
-        FARMER_ID = str(row[0])
-        DEIMOS_ID = str(row[1])
-        print(FARMER_ID)
+        # Check if bad_ids folder exists inside the results folder, if not create it
+        if os.path.exists('results/bad_ids'):
+            pass
+        else:
+            os.mkdir('results/bad_ids')
+        print(row['ID'])
         print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
 
-        #e_file = open('results/'+FARMER_ID+'_'+DEIMOS_ID+'.txt',"w")
-        #e_file.write(str('Error on line {}'.format(sys.exc_info()[-1].tb_lineno))+' '+str(type(e).__name__)+' '+str(e))
-        #e_file.close()
+        # Write the error in a text file with the filename being the galaxy ID
+        with open('results/bad_ids/' + str(row['ID']) + '.txt', "w") as e_file:
+            e_file.write('Error on line {} {} {}'.format(sys.exc_info()[-1].tb_lineno, type(e).__name__, e))
 
 
 
 
 
+# Main function
 if __name__ == '__main__':
-    # First argument is catalog
-    catalog = str(sys.argv[1])
-    
     # Starting the timer
     start = timeit.default_timer()
-    
-    # Loading in the catalog
-    cat = pd.read_csv(catalog)
-    cat = list(cat[['Unnamed: 0','ID', 'ra', 'dec', 'zspec', 'Qf', 'fits1d']].to_numpy())
 
-    # Prepping for parallel processing
-    print('CPU Count: ',cpu_count())
-    p = Pool(cpu_count()-1)
+    # First argument is catalog path
+    catalog_path = str(sys.argv[1])
+
+    # Make sure catalog path is valid
+    while True:
+        if os.path.exists(catalog_path):
+            break
+        else:
+            print("Invalid catalog path. Please try again.")
+            catalog_path = input("Enter the path to the catalog: ")
+
+    # Get user to input whether they want to create an ouput catalog or not by providing a prompt and make sure the input is valid
+    while True:
+        output = input("Do you want to create an output catalog? (yes/no): ")
+        if output in ["yes", "no"]:
+            break
+        else:
+            print("Invalid input. Please try again.")
+
+    # Load catalog
+    catalog = pd.read_csv(catalog_path)
+
+    # Get user to input the number of cores to use and make sure the input is valid
+    while True:
+        cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
+        try:
+            cores = int(cores)
+            if cores < 1 or cores > cpu_count():
+                raise ValueError
+            break
+        except ValueError:
+            print("Invalid input. Please try again.")
+
+    # Initialize the pool
+    p = Pool(cores)
     
     # Performing the fit
-    p.map(qfit,cat)
+    p.map(qfit,catalog)
 
     # Ending the timer
     end = timeit.default_timer()
     print(f'Fitting finished in : {np.round(end - start)}s')
+
+    # Once all the fitting is finished and the user wants to create an output catalog, create the output catalog
+    if output == "yes":
+        # Read all .pkl files in the folders inside results folder
+        files = glob.glob('results/*/*.pkl')
+
+        # Initialize an empty list to store the dataframes
+        dfs = []
+
+        # Loop through the files and append the dataframes to the list
+        for each in files:
+            
+            # Read the dataframe
+            df = pd.read_pickle(each)
+
+            df_new = df[['Linename','flux','flux_err','snr']]
+            df_new.set_index('Linename', inplace=True)
+            df_new = df_new.stack().to_frame().T
+            df_new.columns = ['{}_{}'.format(*c) for c in df_new.columns]
+
+            # Add the ID to the dataframe using the folder name
+            idx = each.split('/')[1].split('_')[0]
+            ID = each.split('/')[1].split('_')[1]
+            z = each.split('/')[1].split('_')[2]
+            df_new.insert(0,'idx',idx)
+            df_new.insert(1,'ID',ID)
+            df_new.insert(2,'z',z)
+
+            dfs.append(df_new)
+        
+        # Concatenate the dataframes
+        output_catalog = pd.concat(dfs, ignore_index=True)
+
+        # Save the output catalog
+        output_catalog.to_csv('catalogs/output_catalog.csv', index=False)
+
+    
+
+
+
+    
+
+    
