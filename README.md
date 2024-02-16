@@ -1,7 +1,5 @@
 # AutoQSOFit
-Code to automate execution of PyQSOFIT on multiple objects and generating an emission line catalog efficiently
-
-This repository is a wrapper over PyQSOFit ([found here](https://github.com/legolason/PyQSOFit/tree/master)) in which the user can input a catalog that has a redshift and fits file and recieve an output catalog of the corresponding emission line fit. 
+This repository is a wrapper over ([PyQSOFit](https://github.com/legolason/PyQSOFit/tree/master)) in which the user can input a catalog that has a redshift and fits file and recieve an output catalog of the corresponding emission line fit. 
 
 In order to do this, we created a notebook `pre_notebook.ipynb` *(title in progress)* that allows the user to read in their catalog and spits out an "input catalog" that is compatible with the fitting program `autoqsofit.py`.
 
