@@ -12,3 +12,4 @@ multiprocess>=0.70.12
 sfdmap2>=0.2.0
 pandas>=1.3.3
 scikit-learn>=1.4.0
+Pyarrow>=1.26.4

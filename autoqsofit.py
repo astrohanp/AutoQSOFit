@@ -1,4 +1,4 @@
-#Authors:
+# Authors:
 #    Rohan Pattnaik
 #    Felix Martinez
 
@@ -24,6 +24,11 @@ from astropy.convolution import convolve, Gaussian1DKernel
 from multiprocessing import Pool,cpu_count
 import warnings
 warnings.filterwarnings("ignore")
+
+# initial conditions
+check = True
+
+
 
 def cont_sub_alt(df_data):
     '''
@@ -202,7 +207,9 @@ def qfit(row):
         # f = fits.open(fits_link+filename) # Close this
 
         # Loading in the galaxies data
-        wl = row['wavelength']
+        print('starting qfit')
+        
+        wl = row['wavelength'] # Angstrom
         flux = row['flux']#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
         error = row['error']#/1e-17
         ID = row['ID']
@@ -216,53 +223,54 @@ def qfit(row):
             ra = 0
             dec = 0
 
-        # Convert wavelength to rest frame
+        # Creating a dataframe that has our Wavelength flux and error and converting wavelength to rest frame
         df_data = pd.DataFrame(data=list(zip(wl,flux,error)),columns=['wavelength','flux','error'])
         df_data['wavelength'] = df_data['wavelength']/(1+z)
-        
         # # closing the fits file
         # f.close()
         
         
         
         ########## Get results from alternate continuum subtraction ##########
+#        print('starting cont sub')
         df_final, best_fit, lines_cent, width, lines_c_latex = cont_sub_alt(df_data)
-        
-        
+#        print('finishing cont sub')
         
         ########## Setting up pathways ##########
-        path_ex = '.'
-        path_out = 'results/'
+        path_cat = 'catalogs/'
+        path_result = 'results/'
+        path_parameters = 'pyqsofit/'
         
         # Creates a results folder to save output
-        results_folder = 'results'
-        if os.path.exists(results_folder):
+        if os.path.exists(path_result):
             pass
         else:
-            os.mkdir(results_folder)
-            
+            os.mkdir(path_result)
+        
         # Creates a galaxy ID folder in your results folder to save output
         fname = str(row.index)+'_'+str(ID)+'_'+str(z)
-        folder = results_folder+'/'+fname+'/'
-        if os.path.exists(folder):
+        gal_folder = path_result+fname+'/'
+        if os.path.exists(gal_folder):
             pass
         else:
-            os.mkdir(folder)
-
+            os.mkdir(gal_folder)
 
         ########## Prepairing the Data for fitting ##########
         # Setting wavelength to be in rest frame
         wavelength = df_final.wavelength.to_numpy()*(1+z)
         flux = df_final.flux.to_numpy()
 
-        q = QSOFit(wavelength, flux, error, z, ra = ra, dec = dec, path = path_ex)
+        q = QSOFit(wavelength, flux, error, z, ra = ra, dec = dec, path = path_parameters)
         
         ########## Do the fitting ##########
-        start = timeit.default_timer()
-        
+        if check:
+            start = timeit.default_timer()
+            print('Modeling '+Str(ID))
+        else:
+            pass
 
 
-########## Test code that has PyQSOFit Defaults ##########
+        ########## Test code that has PyQSOFit Defaults ##########
 
         q.Fit(name=None,  # customize the name of given targets. Default: plate-mjd-fiber
              # prepocessing parameters
@@ -301,7 +309,7 @@ def qfit(row):
              # If True, do Monte Carlo resampling of the spectrum based on the input error array to produce the MC error array
              MCMC=False,
              # If True, do Markov Chain Monte Carlo sampling of the posterior probability densities to produce the error array
-             nsamp=200,
+             nsamp=100,
              # The number of trials of the MC process (if MC=True) or number samples to run MCMC chain (if MCMC=True)
 
              # advanced fitting parameters
@@ -314,7 +322,7 @@ def qfit(row):
              # customize the results
              save_result=False,  # If True, all the fitting results will be saved to a fits file
              save_fits_name=None,  # The output name of the result fits
-             save_fits_path=path_out,  # The output path of the result fits
+             save_fits_path=gal_folder,  # The output path of the result fits
              plot_fig=False,  # If True, the fitting results will be plotted
              save_fig=True,  # If True, the figure will be saved
              plot_corner=False,  # Whether or not to plot the corner plot results if MCMC=True
@@ -333,7 +341,7 @@ def qfit(row):
         ########## Creating Title for Figure ##########
         # Add plot title - Commented out plt.title part in PyQSOFIT.py
         plt.title(fname+' (z = '+str(np.round(z,3))+')',fontdict={'fontsize':18})
-        plt.savefig(folder+fname+'.png')
+        plt.savefig(gal_folder+fname+'.png')
         plt.close()
 
         ########## Creating a DataFrame that holds erros and results ##########
@@ -468,18 +476,20 @@ def qfit(row):
         np.save(folder+fname+'_wave_flux_org.npy',np.array([wl,flux]))
         
         # ending the timer
-        end = timeit.default_timer()
-        print(f'Fitting completed for Galaxy',ID,'saved the results in',folder,f'it took {np.round(end - start, 1)}s')
-        
+        if check:
+            end = timeit.default_timer()
+            print(f'Fitting completed for Galaxy',ID,'saved the results in',gal_folder,f'it took {np.round(end - start, 1)}s')
+        else:
+            pass
 
     except Exception as e:
+    
         ########## Printing out the error ##########
         # Check if bad_ids folder exists inside the results folder, if not create it
         if os.path.exists('results/bad_ids'):
             pass
         else:
             os.mkdir('results/bad_ids')
-        print(row['ID'])
         print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
 
         # Write the error in a text file with the filename being the galaxy ID
@@ -508,31 +518,32 @@ if __name__ == '__main__':
 
     # Get user to input whether they want to create an ouput catalog or not by providing a prompt and make sure the input is valid
     while True:
-        output = input("Do you want to create an output catalog? (yes/no): ")
-        if output in ["yes", "no"]:
+        output = input("Do you want to create an output catalog? (y/n): ")
+        if output in ["y", "n", "yes", "no"]:
             break
         else:
             print("Invalid input. Please try again.")
 
     # Load catalog
-    catalog = pd.read_csv(catalog_path)
+    catalog = pd.read_pickle(catalog_path)
 
-    # Get user to input the number of cores to use and make sure the input is valid
-    while True:
-        cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
-        try:
-            cores = int(cores)
-            if cores < 1 or cores > cpu_count():
-                raise ValueError
-            break
-        except ValueError:
-            print("Invalid input. Please try again.")
-
-    # Initialize the pool
-    p = Pool(cores)
-    
-    # Performing the fit
-    p.map(qfit,catalog)
+#    # Get user to input the number of cores to use and make sure the input is valid
+#    while True:
+#        cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
+#        try:
+#            cores = int(cores)
+#            if cores < 1 or cores > cpu_count():
+#                raise ValueError
+#            break
+#        except ValueError:
+#            print("Invalid input. Please try again.")
+#
+#    # Initialize the pool
+#    p = Pool(cores)
+#    
+#    # Performing the fit
+#    p.map(qfit,catalog)
+    qfit(catalog)
 
     # Ending the timer
     end = timeit.default_timer()
