@@ -1,0 +1,1 @@
+Error on line 291 ValueError Initial state has a large condition number. Make sure that your walkers are linearly independent for the best performance

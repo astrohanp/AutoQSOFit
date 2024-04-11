@@ -1,0 +1,1 @@
+Error on line 254 UnboundLocalError local variable 'best_fit' referenced before assignment

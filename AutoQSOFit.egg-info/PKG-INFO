@@ -26,3 +26,4 @@ Requires-Dist: multiprocess>=0.70.12
 Requires-Dist: sfdmap2>=0.2.0
 Requires-Dist: pandas>=1.3.3
 Requires-Dist: scikit-learn>=1.4.0
+Requires-Dist: Pyarrow>=1.26.4

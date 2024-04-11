@@ -21,14 +21,21 @@ from sklearn.metrics import mean_squared_error as mse
 from astropy.convolution import convolve, Gaussian1DKernel
 
 # System packages
-from multiprocessing import Pool,cpu_count
+from multiprocessing import cpu_count
+from multiprocess import Pool
 import warnings
 warnings.filterwarnings("ignore")
+import traceback
 
 # initial conditions
 check = True
 
+def seconds_to_hms(total_seconds):
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
 
+    return hours, minutes, seconds
 
 def cont_sub_alt(df_data):
     '''
@@ -161,7 +168,7 @@ def cont_sub_alt(df_data):
 
     return df_final, best_fit, lines_cent, width, lines_c_latex
 
-def qfit(row):
+def qfit(row_index,row):
     '''
     Fits a galaxy's spectra to emission lines and saves the results in
     an output folder.
@@ -207,7 +214,12 @@ def qfit(row):
         # f = fits.open(fits_link+filename) # Close this
 
         # Loading in the galaxies data
+        print('********************')
         print('starting qfit')
+        print('********************')
+
+
+        # print(row)
         
         wl = row['wavelength'] # Angstrom
         flux = row['flux']#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
@@ -229,11 +241,20 @@ def qfit(row):
         # # closing the fits file
         # f.close()
         
+        ########## Do the fitting ##########
+        if check:
+            start = timeit.default_timer()
+            print('Modeling '+str(ID))
+        else:
+            pass
         
         
         ########## Get results from alternate continuum subtraction ##########
 #        print('starting cont sub')
         df_final, best_fit, lines_cent, width, lines_c_latex = cont_sub_alt(df_data)
+        end = timeit.default_timer()
+        hrs,minutes,seconds = seconds_to_hms(end-start)
+        print('Finished Fitting Cont Sub in  : '+str(hrs)+'hrs '+str(minutes)+'mins '+str(np.round(seconds,2))+'s')
 #        print('finishing cont sub')
         
         ########## Setting up pathways ##########
@@ -248,7 +269,7 @@ def qfit(row):
             os.mkdir(path_result)
         
         # Creates a galaxy ID folder in your results folder to save output
-        fname = str(row.index)+'_'+str(ID)+'_'+str(z)
+        fname = str(row_index)+'_'+str(ID)+'_'+str(z)
         gal_folder = path_result+fname+'/'
         if os.path.exists(gal_folder):
             pass
@@ -262,12 +283,7 @@ def qfit(row):
 
         q = QSOFit(wavelength, flux, error, z, ra = ra, dec = dec, path = path_parameters)
         
-        ########## Do the fitting ##########
-        if check:
-            start = timeit.default_timer()
-            print('Modeling '+Str(ID))
-        else:
-            pass
+        
 
 
         ########## Test code that has PyQSOFit Defaults ##########
@@ -277,7 +293,7 @@ def qfit(row):
              nsmooth=1,  # do n-pixel smoothing to the raw input flux and err spectra
              and_mask=False,  # delete the and masked pixels
              or_mask=False,  # delete the or masked pixels
-             reject_badpix=True,  # reject 10 most possible outliers by the test of pointDistGESD
+             reject_badpix=False,  # reject 10 most possible outliers by the test of pointDistGESD
              deredden=True,  # correct the Galactic extinction
              wave_range=None,  # trim input wavelength
              wave_mask=None,  # 2-D array, mask the given range(s)
@@ -286,14 +302,14 @@ def qfit(row):
              decompose_host=False,  # If True, the host galaxy-QSO decomposition will be applied
              host_line_mask=True,
              # If True, the line region of galaxy will be masked when subtracted from original spectra
-             BC03=False,  # If True, Bruzual1 & Charlot 2003 host model will be used
-             Mi=None,  # i-band absolute magnitude, for further decide PCA model, not necessary
+             # BC03=False,  # If True, Bruzual1 & Charlot 2003 host model will be used
+             # Mi=None,  # i-band absolute magnitude, for further decide PCA model, not necessary
              npca_gal=5,  # The number of galaxy PCA components / galaxy models applied
-             npca_qso=10,  # The number of QSO PCA components applied
+             npca_qso=20,  # The number of QSO PCA components applied
 
              # continuum model fit parameters
-             Fe_uv_op=True,  # If True, fit continuum with UV and optical FeII template
-             poly=True,  # If True, fit continuum with the polynomial component to account for the dust reddening
+             Fe_uv_op=False,  # If True, fit continuum with UV and optical FeII template
+             poly=False,  # If True, fit continuum with the polynomial component to account for the dust reddening
              BC=False,  # If True, fit continuum with Balmer continua from 1000 to 3646A
              initial_guess=None,  # Initial parameters for continuum model, read the annotation of this function for detail
              rej_abs_conti=False,  # If True, it will iterately reject 3 sigma outlier absorption pixels in the continuum
@@ -305,9 +321,9 @@ def qfit(row):
              # If True, it will iterately reject 3 sigma outlier absorption pixels in the emission lines
 
              # fitting method selection
-             MC=True,
+             MC=False,
              # If True, do Monte Carlo resampling of the spectrum based on the input error array to produce the MC error array
-             MCMC=False,
+             MCMC=True,
              # If True, do Markov Chain Monte Carlo sampling of the posterior probability densities to produce the error array
              nsamp=100,
              # The number of trials of the MC process (if MC=True) or number samples to run MCMC chain (if MCMC=True)
@@ -316,15 +332,15 @@ def qfit(row):
              param_file_name='qsopar.fits',  # Name of the qso fitting parameter FITS file.
              nburn=20,  # The number of burn-in samples to run MCMC chain
              nthin=10,  # To set the MCMC chain returns every n samples
-             epsilon_jitter=0.,
+             epsilon_jitter=1e-5,
              # Initial jitter for every initial guass to avoid local minimum. (Under test, not recommanded to change)
 
              # customize the results
              save_result=False,  # If True, all the fitting results will be saved to a fits file
              save_fits_name=None,  # The output name of the result fits
              save_fits_path=gal_folder,  # The output path of the result fits
-             plot_fig=False,  # If True, the fitting results will be plotted
-             save_fig=True,  # If True, the figure will be saved
+             plot_fig=True,  # If True, the fitting results will be plotted
+             save_fig=False,  # If True, the figure will be saved
              plot_corner=False,  # Whether or not to plot the corner plot results if MCMC=True
 
              # debugging mode
@@ -337,6 +353,10 @@ def qfit(row):
                  },
              kwargs_conti_emcee={},
              kwargs_line_emcee={})
+        
+        end = timeit.default_timer()
+        hrs,minutes,seconds = seconds_to_hms(end-start)
+        print('Finished Fitting QFIT in  : '+str(hrs)+'hrs '+str(minutes)+'mins '+str(np.round(seconds,2))+'s')
             
         ########## Creating Title for Figure ##########
         # Add plot title - Commented out plt.title part in PyQSOFIT.py
@@ -462,18 +482,18 @@ def qfit(row):
         final_lines['all_Peak'] = all_peaks
         final_lines['all_flux'] = all_areas
         #final_lines['all_snr'] = all_snrs
-        final_lines.to_pickle(folder+fname+'_table.pkl')
+        final_lines.to_pickle(gal_folder+fname+'_table.pkl')
 
         ########## Saving the results ##########
         # Save gauss results
         gauss_results = np.array([q.gauss_result,q.gauss_result_name])
-        np.save(folder+fname+'_gauss_results.npy',gauss_results)
-        np.save(folder+fname+'_many_gauss_linefit.npy',q.Manygauss(np.log(q.wave),q.gauss_result[0::2]))
+        np.save(gal_folder+fname+'_gauss_results.npy',gauss_results)
+        np.save(gal_folder+fname+'_many_gauss_linefit.npy',q.Manygauss(np.log(q.wave),q.gauss_result[0::2]))
 
         # Save other plotting files
-        np.save(folder+fname+'_wave_flux_err.npy',np.array([q.wave,q.flux,q.err]))
-        np.save(folder+fname+'_f_conti_model.npy',q.f_conti_model)
-        np.save(folder+fname+'_wave_flux_org.npy',np.array([wl,flux]))
+        np.save(gal_folder+fname+'_wave_flux_err.npy',np.array([q.wave,q.flux,q.err]))
+        np.save(gal_folder+fname+'_f_conti_model.npy',q.f_conti_model)
+        np.save(gal_folder+fname+'_wave_flux_org.npy',np.array([wl,flux]))
         
         # ending the timer
         if check:
@@ -491,6 +511,7 @@ def qfit(row):
         else:
             os.mkdir('results/bad_ids')
         print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
+        print(traceback.format_exc())
 
         # Write the error in a text file with the filename being the galaxy ID
         with open('results/bad_ids/' + str(row['ID']) + '.txt', "w") as e_file:
@@ -527,30 +548,32 @@ if __name__ == '__main__':
     # Load catalog
     catalog = pd.read_pickle(catalog_path)
 
-#    # Get user to input the number of cores to use and make sure the input is valid
-#    while True:
-#        cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
-#        try:
-#            cores = int(cores)
-#            if cores < 1 or cores > cpu_count():
-#                raise ValueError
-#            break
-#        except ValueError:
-#            print("Invalid input. Please try again.")
-#
-#    # Initialize the pool
-#    p = Pool(cores)
-#    
-#    # Performing the fit
-#    p.map(qfit,catalog)
-    qfit(catalog)
+    # # Get user to input the number of cores to use and make sure the input is valid
+    # while True:
+    #     cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
+    #     try:
+    #         cores = int(cores)
+    #         if cores < 1 or cores > cpu_count():
+    #             raise ValueError
+    #         break
+    #     except ValueError:
+    #         print("Invalid input. Please try again.")
+ 
+    # # Initialize the pool
+    # p = Pool(cores)
+    
+    # # Performing the fit
+    # p.imap(func=qfit,iterable=catalog)
+
+    for index,row in catalog.iterrows():
+        qfit(index,row)
 
     # Ending the timer
     end = timeit.default_timer()
     print(f'Fitting finished in : {np.round(end - start)}s')
 
     # Once all the fitting is finished and the user wants to create an output catalog, create the output catalog
-    if output == "yes":
+    if output == "yes" or output == "y":
         # Read all .pkl files in the folders inside results folder
         files = glob.glob('results/*/*.pkl')
 
