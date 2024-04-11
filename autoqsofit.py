@@ -21,8 +21,8 @@ from sklearn.metrics import mean_squared_error as mse
 from astropy.convolution import convolve, Gaussian1DKernel
 
 # System packages
-from multiprocessing import cpu_count
-from multiprocess import Pool
+from multiprocessing import Pool,cpu_count
+# from multiprocess import Pool
 import warnings
 warnings.filterwarnings("ignore")
 import traceback
@@ -168,7 +168,7 @@ def cont_sub_alt(df_data):
 
     return df_final, best_fit, lines_cent, width, lines_c_latex
 
-def qfit(row_index,row):
+def qfit(row):
     '''
     Fits a galaxy's spectra to emission lines and saves the results in
     an output folder.
@@ -219,21 +219,20 @@ def qfit(row_index,row):
         print('********************')
 
 
-        # print(row)
+        # print(row) [index,ID,ra,dec,z,wl,flux,error]
+        row_index = row[0]
+        ID = row[1]
+        ra = row[2]
+        dec = row[3]
+        z = row[4]
+        wl = row[5] # Angstrom
+        flux = row[6]#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
+        error = row[7]#/1e-17
         
-        wl = row['wavelength'] # Angstrom
-        flux = row['flux']#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
-        error = row['error']#/1e-17
-        ID = row['ID']
-        z = row['z']
+        
+        
 
-        # Check if ra and dec are provided, if not set them to 0
-        if 'ra' in row and 'dec' in row:
-            ra = row['ra']
-            dec = row['dec']
-        else:
-            ra = 0
-            dec = 0
+
 
         # Creating a dataframe that has our Wavelength flux and error and converting wavelength to rest frame
         df_data = pd.DataFrame(data=list(zip(wl,flux,error)),columns=['wavelength','flux','error'])
@@ -514,7 +513,7 @@ def qfit(row_index,row):
         print(traceback.format_exc())
 
         # Write the error in a text file with the filename being the galaxy ID
-        with open('results/bad_ids/' + str(row['ID']) + '.txt', "w") as e_file:
+        with open('results/bad_ids/' + str(row[1]) + '.txt', "w") as e_file:
             e_file.write('Error on line {} {} {}'.format(sys.exc_info()[-1].tb_lineno, type(e).__name__, e))
 
 
@@ -547,26 +546,45 @@ if __name__ == '__main__':
 
     # Load catalog
     catalog = pd.read_pickle(catalog_path)
-
-    # # Get user to input the number of cores to use and make sure the input is valid
-    # while True:
-    #     cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
-    #     try:
-    #         cores = int(cores)
-    #         if cores < 1 or cores > cpu_count():
-    #             raise ValueError
-    #         break
-    #     except ValueError:
-    #         print("Invalid input. Please try again.")
- 
-    # # Initialize the pool
-    # p = Pool(cores)
     
-    # # Performing the fit
-    # p.imap(func=qfit,iterable=catalog)
-
+    cat = []
     for index,row in catalog.iterrows():
-        qfit(index,row)
+        wl = row['wavelength'] # Angstrom
+        flux = row['flux']#/1e-17 # Convert to unit of of 10^{-17} erg/s/cm^2/Angstrom for PYQSOFIT input
+        error = row['error']#/1e-17
+        ID = row['ID']
+        z = row['z']
+
+        # Check if ra and dec are provided, if not set them to 0
+        if 'ra' in row and 'dec' in row:
+            ra = row['ra']
+            dec = row['dec']
+
+        else:
+            ra = 0
+            dec = 0
+
+        cat.append([index,ID,ra,dec,z,wl,flux,error])
+
+    # Get user to input the number of cores to use and make sure the input is valid
+    while True:
+        cores = input("Enter the number of cores to use (1-{}): ".format(cpu_count()-1))
+        try:
+            cores = int(cores)
+            if cores < 1 or cores > cpu_count():
+                raise ValueError
+            break
+        except ValueError:
+            print("Invalid input. Please try again.")
+ 
+    # Initialize the pool
+    p = Pool(cores)
+    
+    # Performing the fit
+    p.map(qfit,cat)
+
+    # for each in cat:
+    #     qfit(each)
 
     # Ending the timer
     end = timeit.default_timer()
