@@ -1,1 +1,1 @@
-Error on line 253 UnboundLocalError local variable 'best_fit' referenced before assignment
+Error on line 253 UnboundLocalError cannot access local variable 'best_fit' where it is not associated with a value
